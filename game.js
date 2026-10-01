@@ -36,6 +36,8 @@ function noise1(x) {
   return lerp(h(i), h(i + 1), u);
 }
 
+function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
 const store = {
   get(k, d) { try { const v = localStorage.getItem('orbithop.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('orbithop.' + k, JSON.stringify(v)); } catch (e) {} },
@@ -120,6 +122,7 @@ let player = null, camY = 0, score = 0, shownScore = 0, maxIndex = 0, runCoins =
 let trauma = 0, hitstop = 0, slowmo = 0, flight = 0, spawnIndex = 0, revived = false, lastPlanet = null;
 let coinChain = 0, captureChain = 0, gamesPlayed = 0, time = 0, overReady = false, lastDeath = '', runId = 0;
 let best = store.get('best', 0), bank = store.get('coins', 0);
+const isTutorial = () => best < 5 && score < 3; // new players get aim help for their first planets
 
 const PLANET_COLORS = [
   ['#ff9a62', '#9a3412'], ['#7dd3fc', '#075985'], ['#a78bfa', '#4c1d95'], ['#86efac', '#166534'],
@@ -197,6 +200,7 @@ function squash(sx, sy) { player.sx = sx; player.sy = sy; player.squashT = 0; }
 function launch() {
   const pl = player;
   if (state !== 'play' || pl.mode !== 'orbit') return;
+  setTip('');
   const tx = -Math.sin(pl.angle) * pl.dir, ty = Math.cos(pl.angle) * pl.dir;
   pl.vx = tx * FLY_SPEED; pl.vy = ty * FLY_SPEED;
   lastPlanet = pl.planet; pl.mode = 'fly'; flight = 0;
@@ -212,6 +216,7 @@ function capture(p, d, dx, dy) {
   p.bump = 1;
   squash(1.35, 0.7);
   hitstop = HITSTOP_CAPTURE;
+  buzz(12);
   if (p.index > maxIndex) {
     const gained = p.index - maxIndex;
     maxIndex = p.index; score += gained; captureChain++;
@@ -238,6 +243,7 @@ function die(reason) {
   hitstop = HITSTOP_DEATH; slowmo = SLOWMO_DEATH;
   addTrauma(0.6);
   Sfx.die();
+  buzz([40, 30, 80]);
   burst(player.x, player.y, trailColor(), 40, 320, { life: 0.9, size: 4.5 });
   burst(player.x, player.y, '#ffffff', 16, 160, { life: 1.2, size: 2 });
   player.mode = 'dead';
@@ -455,9 +461,21 @@ function drawPlayer() {
   if (pl.mode === 'orbit' && state === 'play') {
     // aim hint along the launch tangent
     const tx = -Math.sin(pl.angle) * pl.dir, ty = Math.cos(pl.angle) * pl.dir;
-    ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.setLineDash([4, 6]); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(pl.x + tx * 12, pl.y + ty * 12); ctx.lineTo(pl.x + tx * 70, pl.y + ty * 70); ctx.stroke();
+    let onTarget = false, tgt = null;
+    if (isTutorial()) {
+      tgt = planets.find(q => q.index === maxIndex + 1);
+      if (tgt) {
+        const dx = tgt.x - pl.x, dy = tgt.y - pl.y;
+        onTarget = dx * tx + dy * ty > 0 && Math.abs(dx * ty - dy * tx) < tgt.r + CAPTURE_GAP * 0.6;
+        ctx.strokeStyle = `rgba(255,213,74,${0.35 + 0.25 * Math.sin(time * 6)})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(tgt.x, tgt.y, tgt.r + CAPTURE_GAP, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    const len = onTarget ? 140 : 70;
+    ctx.strokeStyle = onTarget ? 'rgba(255,213,74,.9)' : 'rgba(255,255,255,.28)'; ctx.setLineDash([4, 6]); ctx.lineWidth = onTarget ? 3 : 2;
+    ctx.beginPath(); ctx.moveTo(pl.x + tx * 12, pl.y + ty * 12); ctx.lineTo(pl.x + tx * len, pl.y + ty * len); ctx.stroke();
     ctx.setLineDash([]); ctx.lineWidth = 1;
+    setTip(isTutorial() ? (onTarget ? 'TAP NOW!' : 'Tap when the arrow points at the glowing planet') : '');
   }
   const e = easeOutElastic(pl.squashT);
   const sxs = lerp(pl.sx, 1, e), sys = lerp(pl.sy, 1, e);
@@ -473,8 +491,16 @@ function drawPlayer() {
 // ---------- UI ----------
 const panels = { menu: $('menu'), over: $('over'), shop: $('shop') };
 function showPanel(name) {
+  if (name !== null) setTip('');
   for (const k in panels) panels[k].classList.toggle('hidden', k !== name);
   $('score').classList.toggle('hidden', name !== null);
+}
+let tipText = null;
+function setTip(text) {
+  if (text === tipText) return;
+  tipText = text;
+  $('tip').textContent = text;
+  $('tip').classList.toggle('hidden', !text);
 }
 function hudScore() { $('score').textContent = Math.round(shownScore); }
 function hudCoins() { $('coins').textContent = '★ ' + (bank + runCoins - bankedThisRun); }
@@ -577,10 +603,25 @@ syncMute();
 Monetize.onAdPause(() => Sfx.adPause());
 Monetize.onAdResume(() => Sfx.adResume());
 
+// ---------- Daily gift ----------
+function dailyGift() {
+  const day = d => d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  const today = day(new Date()), yesterday = day(new Date(Date.now() - 864e5));
+  const last = store.get('giftDay', '');
+  if (last === today) return;
+  const streak = last === yesterday ? store.get('giftStreak', 0) + 1 : 1;
+  const gift = Math.min(50, 15 + (streak - 1) * 5);
+  bank += gift;
+  store.set('coins', bank); store.set('giftDay', today); store.set('giftStreak', streak);
+  refreshMenu();
+  setTimeout(() => toast(streak > 1 ? `Day ${streak} streak! Daily gift +${gift}★` : `Daily gift +${gift}★ — come back tomorrow for more`), 600);
+}
+
 // ---------- Boot ----------
 newRun();
 refreshMenu();
 showPanel('menu');
+dailyGift();
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.033, (now - last) / 1000); last = now;
