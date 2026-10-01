@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Orbit Hop</title>
+<meta name="description" content="One-tap space hopper. Swing around planets, grab stars, dodge asteroids, climb as high as you can.">
+<meta name="theme-color" content="#070818">
+<meta property="og:title" content="Orbit Hop">
+<meta property="og:description" content="One-tap space hopper. How high can you climb?">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root { --fg:#f4f2ff; --dim:#a9a6c9; --accent:#7ad7ff; --gold:#ffd54a; --panel:rgba(16,14,40,.82); }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:#070818; color:var(--fg); overflow:hidden;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; touch-action:none; }
+  canvas { position:fixed; inset:0; display:block; }
+  #hud { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start;
+    padding:calc(10px + env(safe-area-inset-top)) 16px 0; pointer-events:none; }
+  #score { font-size:44px; font-weight:800; letter-spacing:1px; text-shadow:0 2px 12px rgba(122,215,255,.45); }
+  #coins { font-size:20px; font-weight:700; color:var(--gold); padding-top:8px; }
+  #mute { pointer-events:auto; background:none; border:0; color:var(--dim); font-size:22px; padding:8px; cursor:pointer; }
+  .hud-left, .hud-right { width:90px; } .hud-right { text-align:right; }
+  .panel { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(340px, calc(100vw - 32px));
+    background:var(--panel); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08);
+    border-radius:22px; padding:24px 20px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .hidden { display:none !important; }
+  h1 { margin:0 0 4px; font-size:40px; letter-spacing:2px; background:linear-gradient(90deg,#7ad7ff,#b26bff,#ff4d8d);
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub { color:var(--dim); margin:0 0 18px; font-size:15px; line-height:1.4; }
+  .stats { display:flex; justify-content:center; gap:22px; margin:6px 0 18px; font-size:15px; color:var(--dim); }
+  .stats b { display:block; font-size:26px; color:var(--fg); }
+  .stats .gold b { color:var(--gold); }
+  button.btn { display:block; width:100%; margin:10px 0 0; padding:14px; font:inherit; font-size:18px; font-weight:800;
+    border:0; border-radius:14px; cursor:pointer; color:#0b0d1f; background:linear-gradient(90deg,#7ad7ff,#9d8cff); }
+  button.btn.alt { background:rgba(255,255,255,.09); color:var(--fg); }
+  button.btn.gold { background:linear-gradient(90deg,#ffd54a,#ff9f43); }
+  button.btn:active { transform:scale(.98); }
+  .badge { display:inline-block; margin-bottom:8px; padding:4px 12px; border-radius:99px; background:var(--gold); color:#0b0d1f; font-weight:800; font-size:13px; }
+  .big { font-size:64px; font-weight:800; line-height:1; margin:4px 0; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:12px 0 4px; }
+  .skin { background:rgba(255,255,255,.06); border:2px solid transparent; border-radius:14px; padding:10px 4px; cursor:pointer; font-size:13px; color:var(--fg); font-family:inherit; }
+  .skin.on { border-color:var(--accent); }
+  .skin.locked { opacity:.75; }
+  .skin .dot { width:26px; height:26px; border-radius:50%; margin:0 auto 6px; }
+  .skin .price { color:var(--gold); font-weight:700; }
+  .toast { position:fixed; left:50%; bottom:calc(30px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:var(--panel);
+    padding:10px 16px; border-radius:12px; font-size:14px; pointer-events:none; }
+  .hint { color:var(--dim); font-size:13px; margin-top:14px; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Orbit Hop game"></canvas>
+
+<div id="hud">
+  <div class="hud-left"><button id="mute" aria-label="Toggle sound">🔊</button></div>
+  <div id="score" class="hidden">0</div>
+  <div class="hud-right"><div id="coins">★ 0</div></div>
+</div>
+
+<div id="menu" class="panel">
+  <h1>ORBIT HOP</h1>
+  <p class="sub">Tap to launch off your planet.<br>Land on the next one. Climb forever.</p>
+  <div class="stats"><div>Best<b id="menuBest">0</b></div><div class="gold">Stars<b id="menuCoins">0</b></div></div>
+  <button class="btn" id="playBtn">PLAY</button>
+  <button class="btn alt" id="menuShopBtn">SKINS</button>
+  <div class="hint">Tap / click / space</div>
+</div>
+
+<div id="over" class="panel hidden">
+  <div id="newBest" class="badge hidden">NEW BEST!</div>
+  <div class="sub" style="margin:0">Planets</div>
+  <div class="big" id="overScore">0</div>
+  <div class="stats"><div>Best<b id="overBest">0</b></div><div class="gold">Stars earned<b id="overCoins">0</b></div></div>
+  <button class="btn gold hidden" id="reviveBtn">▶ REVIVE (watch ad)</button>
+  <button class="btn" id="againBtn">PLAY AGAIN</button>
+  <button class="btn alt" id="overShopBtn">SKINS</button>
+  <button class="btn alt" id="shareBtn">SHARE SCORE</button>
+</div>
+
+<div id="shop" class="panel hidden">
+  <h1 style="font-size:30px">SKINS</h1>
+  <div class="stats" style="margin:4px 0 0"><div class="gold">Stars<b id="shopCoins">0</b></div></div>
+  <div class="grid" id="skinGrid"></div>
+  <button class="btn alt" id="shopBack">BACK</button>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="monetize.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

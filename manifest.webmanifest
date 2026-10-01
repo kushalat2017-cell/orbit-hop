@@ -1,0 +1,10 @@
+{
+  "name": "Orbit Hop",
+  "short_name": "Orbit Hop",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#070818",
+  "theme_color": "#070818",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
