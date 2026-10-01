@@ -36,9 +36,13 @@ window.Monetize = (() => {
     const want = detect();
     if (want === 'none') return 'none';
     try {
-      await withTimeout(loadScript(SDK_URLS[want]), 5000);
-      if (want === 'crazygames') await withTimeout(window.CrazyGames.SDK.init(), 5000);
-      if (want === 'poki') await withTimeout(window.PokiSDK.init(), 5000);
+      await withTimeout(loadScript(SDK_URLS[want]), 15000);
+      if (want === 'crazygames') {
+        await withTimeout(window.CrazyGames.SDK.init(), 15000);
+        // 'disabled' means we're not on a CrazyGames domain: no ads will serve
+        if (window.CrazyGames.SDK.environment === 'disabled') throw new Error('crazygames sdk disabled');
+      }
+      if (want === 'poki') await withTimeout(window.PokiSDK.init(), 15000);
       portal = want; ready = true;
     } catch (e) {
       portal = 'none'; ready = false;
